@@ -13,10 +13,7 @@ struct Tokenizer {
     /* a union storing the file/string+idx */
     union {
         FILE *file;
-        struct {
-            char *stream;
-            size_t idx;
-        } string;
+        char *string;
     } read_from;
 
     enum TokenType {
@@ -65,10 +62,10 @@ static char tokenizer_get_char(struct Tokenizer *tokenizer) {
     char c;
 
     if (tokenizer->read_type == ReadFromString) {
-        c = tokenizer->read_from.string.stream[tokenizer->read_from.string.idx];
+        c = tokenizer->read_from.string[0];
         if (c == '\0')
             return '\0';
-        ++tokenizer->read_from.string.idx;
+        ++tokenizer->read_from.string;
     } else {
         if (feof(tokenizer->read_from.file))
             return '\0';
@@ -135,8 +132,7 @@ static enum TokenType *tokenize_string(char *string) {
     struct Tokenizer tokenizer;
 
     tokenizer.read_type = ReadFromString;
-    tokenizer.read_from.string.stream = string;
-    tokenizer.read_from.string.idx = 0;
+    tokenizer.read_from.string = string;
     tokenizer.allocated = tokenizer.idx = 0;
     tokenizer_tokenize(&tokenizer);
 
