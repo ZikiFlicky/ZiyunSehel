@@ -5,7 +5,7 @@
 #define TAPE_SIZE 100
 
 struct Tokenizer {
-    /* read from a string or from a file? */
+    /* what to read from */
     enum {
         ReadFromString = 1,
         ReadFromFile,
@@ -40,9 +40,9 @@ struct Parser {
             ActionEnd,
             ActionIncrement,
             ActionDecrement,
+            ActionLoop,
             ActionTapeLeft,
             ActionTapeRight,
-            ActionLoop,
             ActionGetChar,
             ActionPutChar,
         } action;
@@ -180,30 +180,29 @@ static struct Action parser_parse_action(struct Parser *parser) {
                 ++parser->token_read_idx;
                 goto end;
             case TokenTypeEof:
-                fprintf(stderr, "Unmatched '['\n");
+                fprintf(stderr, "unmatched '['\n");
                 exit(1);
             default:
                 if (allocated == 0) {
-                    allocated = 64;
+                    allocated = 32;
                     tmp.loop_children = malloc(allocated * sizeof(struct Action));
                 } else if (w_idx >= allocated) {
                     allocated += 8;
                     tmp.loop_children = realloc(tmp.loop_children, allocated * sizeof(struct Action));
+                }
+                if (parser->tokens[parser->token_read_idx] == TokenTypeCloseBracket) {
+                    tmp.loop_children[w_idx++].action = ActionEnd;
+                    goto end;
                 }
                 tmp.loop_children[w_idx++] = parser_parse_action(parser);
                 break;
             }
         }
     end:
-        if (w_idx >= allocated) {
-            allocated = w_idx + 1;
-            tmp.loop_children = realloc(tmp.loop_children, allocated * sizeof(struct Action));
-            tmp.loop_children[w_idx].action = ActionEnd;
-            ++w_idx;
-        } break;
+        break;
     }
     case TokenTypeCloseBracket:
-        fprintf(stderr, "Unmatched ']'\n");
+        fprintf(stderr, "unmatched ']'\n");
         exit(1);
     }
     return tmp;
@@ -217,7 +216,7 @@ static void parser_push(struct Parser *parser, struct Action action) {
         parser->allocated = 64;
         parser->actions = malloc(parser->allocated * sizeof(struct Action));
     } else if (parser->idx >= parser->allocated) {
-        parser->allocated += 8;
+        parser->allocated += 16;
         parser->actions = realloc(parser->actions, parser->allocated * sizeof(struct Action));
     }
     parser->actions[parser->idx++] = action;
@@ -255,6 +254,7 @@ static struct Action *parse_tokens(enum TokenType *tokens) {
   execute an action
 */
 static void interpreter_execute_action(struct Interpreter *interpreter, struct Action action) {
+    printf("%zu\n", interpreter->tape_idx);
     switch (action.action) {
     case ActionIncrement:
         ++interpreter->tape[interpreter->tape_idx];
@@ -296,9 +296,28 @@ static void interpreter_execute_action(struct Interpreter *interpreter, struct A
     case ActionPutChar:
         putchar(interpreter->tape[interpreter->tape_idx]);
         break;
+    /* it should never reach this, but it removes a warning */
     default:
         break;
     }
+}
+
+static void action_free(struct Action *action) {
+    size_t i;
+    if (action->action == ActionLoop) {
+        for (i = 0; action->loop_children[i].action != ActionEnd; ++i)
+            action_free(&action->loop_children[i]);
+        free(action->loop_children);
+        action->loop_children = NULL;
+    }
+}
+
+static void interpreter_free(struct Interpreter *interpreter) {
+    size_t i;
+    for (i = 0; interpreter->actions[i].action != ActionEnd; ++i)
+        action_free(&interpreter->actions[i]);
+    free(interpreter->actions);
+    interpreter->actions = NULL;
 }
 
 /*
@@ -307,8 +326,7 @@ static void interpreter_execute_action(struct Interpreter *interpreter, struct A
 static void interpreter_execute(struct Interpreter *interpreter) {
     while (interpreter->actions[interpreter->action_read_idx].action != ActionEnd)
         interpreter_execute_action(interpreter, interpreter->actions[interpreter->action_read_idx++]);
-
-    free(interpreter->actions);
+    interpreter_free(interpreter);
 }
 
 static void interpreter_reset(struct Interpreter *interpreter) {
