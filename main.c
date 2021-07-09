@@ -254,7 +254,6 @@ static struct Action *parse_tokens(enum TokenType *tokens) {
   execute an action
 */
 static void interpreter_execute_action(struct Interpreter *interpreter, struct Action action) {
-    printf("%zu\n", interpreter->tape_idx);
     switch (action.action) {
     case ActionIncrement:
         ++interpreter->tape[interpreter->tape_idx];
